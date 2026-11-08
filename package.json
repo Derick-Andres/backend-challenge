@@ -1,0 +1,41 @@
+{
+  "name": "distributed-wagering-processor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "engines": { "bun": "1.4.4" },
+  "scripts": {
+    "build": "rm -rf dist && bun --bun tsc -p tsconfig.build.json",
+    "typecheck": "bun --bun tsc --noEmit",
+    "start": "bun dist/src/main.js",
+    "start:dev": "bun --watch src/main.ts",
+    "test": "bun test test/unit",
+    "test:smoke": "bun run build && bun test --timeout 120000 test/smoke.test.ts",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:queues": "docker compose exec -T localstack bash /etc/localstack/init/ready.d/10-init-sqs.sh",
+    "orm": "bun --bun ./node_modules/@mikro-orm/cli/cli.js",
+    "migration:pending": "bun run build && bun run orm migration:pending --config ./dist/mikro-orm.config.js",
+    "migration:up": "bun run build && bun run orm migration:up --config ./dist/mikro-orm.config.js",
+    "migration:down": "bun run build && bun run orm migration:down --config ./dist/mikro-orm.config.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "3.1164.0",
+    "@mikro-orm/core": "7.2.8",
+    "@mikro-orm/migrations": "7.2.8",
+    "@mikro-orm/nestjs": "7.1.0",
+    "@mikro-orm/postgresql": "7.2.8",
+    "@nestjs/common": "12.4.0",
+    "@nestjs/core": "12.4.0",
+    "@nestjs/platform-express": "12.4.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@mikro-orm/cli": "7.2.8",
+    "@types/bun": "1.4.4",
+    "typescript": "6.0.3"
+  }
+}

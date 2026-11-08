@@ -1,0 +1,43 @@
+name: wagering-challenge
+
+services:
+  postgres:
+    image: postgres:17.11-alpine@sha256:3540c0362c809df084ffac0ae69fe794515f9de92692f02178bcdce0ef0302ac
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-wagering}
+      POSTGRES_USER: ${PGUSER:-wagering}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-local-development-only}
+    ports:
+      - "127.0.0.1:${PGPORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 10s
+
+  localstack:
+    image: localstack/localstack:4.14.0@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      SQS_ENDPOINT_STRATEGY: dynamic
+      EAGER_SERVICE_LOADING: "1"
+    ports:
+      - "127.0.0.1:${LOCALSTACK_PORT:-4566}:4566"
+    volumes:
+      - ./scripts/localstack/10-init-sqs.sh:/etc/localstack/init/ready.d/10-init-sqs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/wagering-sqs-ready && awslocal sqs get-queue-url --queue-name wager-transactions.fifo >/dev/null"]
+      interval: 3s
+      timeout: 5s
+      start_period: 10s
+      retries: 30
+    stop_grace_period: 10s
+
+volumes:
+  postgres-data:

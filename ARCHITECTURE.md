@@ -1,14 +1,41 @@
 # Arquitetura inicial — Distributed Wagering Processor
 
-**Estado: proposta, sem implementação.** Este documento explica mecanismos pretendidos e como comprová-los; não declara garantias já entregues. A especificação integral está em [CHALLENGE.md](CHALLENGE.md) e os critérios de entrega em [PLAN.md](PLAN.md).
+**Estado: E1 implementada e validada.** A seção 1 descreve a base existente; os mecanismos financeiros das seções seguintes continuam desenho futuro, sem implementação. D01, A01 e A02 foram confirmadas pelo usuário. A especificação integral está em [CHALLENGE.md](CHALLENGE.md) e os critérios de entrega em [PLAN.md](PLAN.md).
 
 ## 1. Escopo e decisões já fixadas
 
-Bun 1.x, TypeScript estrito, NestJS, MikroORM, PostgreSQL, AWS SQS via LocalStack e Docker Compose são escolhas do usuário. Versões exatas serão verificadas e fixadas em E1, incluindo compatibilidade do runtime, driver PostgreSQL, ORM e runner de testes. Não presumir que toda integração de NestJS funciona sob Bun sem esse smoke test.
+Bun 1.x, TypeScript estrito, NestJS, MikroORM, PostgreSQL, AWS SQS via LocalStack e Docker Compose são escolhas do usuário. As versões exatas foram consultadas no registro oficial e nas documentações abaixo antes da instalação. package.json fixa as dependências diretas; bun.lock fixa a resolução transitiva; `.bun-version` e packageManager fixam Bun 1.4.4. Compose fixa tag e digest das duas imagens.
 
-Autenticação está adiada conforme permitido na §2. O ponto de extensão será um `ProviderIdentityPort`, chamado pelo adaptador HTTP antes do use case. Inicialmente uma implementação explícita de desenvolvimento deixa a identidade declarada passar, sem afirmar que foi autenticada. Posteriormente um adaptador OIDC poderá validar token de IdP externo e vincular seu provedor ao `providerId` solicitado. Não haverá tabela de senhas. Health fica aberto; SQS é canal interno confiável, mantendo as mesmas validações de identidade/contexto de domínio. A extensão será código em E1; neste momento existe somente o desenho.
+Autenticação está adiada conforme permitido na §2. `ProviderIdentityPort` existe em application/identity e é registrada em IdentityModule com um adaptador de desenvolvimento que retorna a identidade declarada e `authenticated: false`. Os únicos endpoints atuais são health, abertos. Quando existir adaptador HTTP financeiro, ele chamará essa porta antes do use case. Posteriormente um adaptador OIDC poderá validar token de IdP externo e vincular seu provedor ao `providerId` solicitado. Não há autenticação artesanal nem tabela de senhas. O futuro consumidor SQS manterá as validações de domínio, embora seu transporte seja interno confiável.
 
-Inspeção inicial: apenas README.md versionado, com 746 linhas; sem código, dependências, AGENTS.md ou instruções nas pastas locais .agents/.codex. README preservado e copiado integralmente para CHALLENGE.md.
+Inspeção inicial: apenas README.md, com 746 linhas; sem código ou instruções locais adicionais. O enunciado foi copiado integralmente para CHALLENGE.md, cujo conteúdo permanece intacto. README agora contém setup, comandos e limites da base E1.
+
+### Base efetivamente entregue em E1
+
+| Item | Implementação e verificação |
+|---|---|
+| Runtime e compilação | Bun 1.4.4; TypeScript 6.0.3 com strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes e noEmitOnError; ESM/NodeNext; build com tsc e execução com Bun. NestJS 12.4.0, com injeção explícita por @Inject |
+| Persistência | MikroORM 7.2.8 + integração NestJS 7.1.0; PostgreSQL 17.11-alpine por digest; conexão lazy do ORM 7 e SELECT 1 real em readiness; nenhuma entidade financeira |
+| Isolamento | Middleware oficial cria RequestContext por HTTP; allowGlobalContext = false; readiness exige getContext(). Teste com duas execuções sobrepostas comprova EMs distintos e uso global proibido. Jobs futuros usarão RequestContext.create ou fork, sem wrapper antecipado |
+| Migrations | Migrator e CLI 7.2.8 registrados; diretório versionável de fontes Migration*.ts e execução compilada Migration*.js; pending/up/down por scripts. Não há migration financeira; reversibilidade de schema ainda não foi testada |
+| SQS local | AWS SDK 3.1164.0; LocalStack Community 4.14.0 por digest; hook idempotente cria comandos, DLQ e eventos; comandos com redrive maxReceiveCount = 5 e visibilidade 30s |
+| Configuração | Zod 4.6.7 valida env antes de iniciar; .env.example só com valores locais fictícios, .env ignorado; erros mostram nomes de campos sem valores |
+| Health | GET /health/live sem IO externo; GET /health/ready consulta DB e as três filas em paralelo, com HEALTH_TIMEOUT_MS, AbortSignal SQS, maxAttempts 1 e timeouts nativos pg |
+
+O deadline da resposta PostgreSQL não é apresentado como cancelamento mágico da operação: query_timeout, connectionTimeoutMillis e statement_timeout também limitam o driver/servidor. Em E1 os limites usam HEALTH_TIMEOUT_MS, default 1000ms; terão de ser reavaliados para migrations/operações demoradas. No SQS, o mesmo AbortSignal limita todas as consultas de filas daquele probe. Cada dependência vira up/down, sem devolver detalhes internos da exceção.
+
+O smoke inicia a API **compilada**, consulta os serviços reais e para/pausa cada container. Parada verifica falha e recuperação; pausa verifica deadline diante de conexão sem resposta. Em ambos, readiness retorna 503 e liveness continua 200; ao restaurar dependências, a mesma API volta a readiness 200.
+
+### Compatibilidade consultada e escolhas de versões
+
+- [Bun — TypeScript e tipos](https://bun.com/docs/runtime/typescript): runtime/package manager/test runner 1.4.4 e @types/bun da mesma versão, conferidos também no [registro oficial](https://registry.npmjs.org/bun/1.4.4).
+- [NestJS 12 — ESM](https://docs.nestjs.com/migration-guide) e [pacote oficial 12.4.0](https://registry.npmjs.org/@nestjs/core/12.4.0): common/core/platform-express na mesma versão. Não dependemos do gerador CLI nem de seu runner padrão.
+- [MikroORM 7 — ESM, TypeScript e driverOptions](https://mikro-orm.io/docs/upgrading-v6-to-v7): NodeNext, TypeScript >=5.8 e opções pg diretamente em driverOptions. TypeScript 6.0.3 atende esse contrato e foi usado no build; não foi necessário adotar TypeScript 7. As engines Node do pacote não provam compatibilidade de Bun; a suíte real verifica o conjunto usado aqui.
+- [Integração NestJS](https://mikro-orm.io/docs/usage-with-nestjs) e [peers da integração 7.1.0](https://registry.npmjs.org/@mikro-orm/nestjs/7.1.0): compatível com Nest 12 e ORM 7; driver PostgreSqlDriver explícito em forRootAsync para registrar o token de EM correto. [Migrator](https://mikro-orm.io/docs/migrations) registrado sem schema sync.
+- [PostgreSQL — versões mantidas](https://www.postgresql.org/support/versioning/): 17.11 escolhido e imagem confirmada por digest. [Driver pg — timeouts](https://node-postgres.com/apis/client) usados na probe.
+- [Release oficial LocalStack 4.14.0](https://github.com/localstack/localstack/releases/tag/v4.14.0), [hooks de inicialização](https://docs.localstack.cloud/aws/customization/advanced/initialization-hooks/) e [mudança de distribuição/autenticação](https://blog.localstack.cloud/localstack-for-aws-release-2026-03-0/): edição comunitária anterior à exigência de token, suficiente para SQS local. É um pin antigo deliberado para este exercício, não uma recomendação de versão atual para produção.
+
+Limites desta base: o volume PostgreSQL persiste, mas LocalStack é descartável e recria filas sem garantia de preservar mensagens. O usuário PostgreSQL inicial é administrativo local; separação de papéis fica em E4. Hooks e redrive configurados não comprovam retry/DLQ de consumidor, ainda inexistente. Não há Money, tabelas financeiras, operações, consumers/publisher, triggers, métricas financeiras ou unidade de trabalho financeira implementados.
 
 ## 2. Organização proporcional
 
@@ -230,7 +257,7 @@ eventId é criado na transação financeira e preservado em todo envio; MessageD
 
 Não existe confirmação atômica conjunta entre PostgreSQL e SQS: se o envio chegou e a resposta se perdeu, haverá repetição. O mecanismo entrega **ao menos uma vez**, condicionado à recuperação dos serviços e dos workers. Quando uma tentativa consegue enviar e confirmar publishedAt, os publishers deixam de selecionar o evento. Não prometer número finito de duplicatas sob falhas infinitas, nem exactly-once no transporte.
 
-O destino não está especificado: propor `wager-events.fifo` configurável no LocalStack, separado da fila de comandos, sem adicionar consumidor de negócio de produção. MessageGroupId pode ser walletId; aggregateId = transactionId nos eventos de transação e walletId no evento de saldo. Não prometer ordem global nem ordem de versões por wallet com vários publishers: dois eventos podem ser enviados fora da ordem original. Consumidores usam identidade/versão e os dados necessários no envelope. Se ordenação estrita de saída for requerida, será outra decisão, ausente no desafio.
+O enunciado não especifica o destino; para E1 o usuário solicitou e foi criada `wager-events.fifo`, separada da fila de comandos. Publisher e consumidor de negócio de saída continuam futuros. MessageGroupId pode ser walletId; aggregateId = transactionId nos eventos de transação e walletId no evento de saldo. Não prometer ordem global nem ordem de versões por wallet com vários publishers: dois eventos podem ser enviados fora da ordem original. Consumidores usam identidade/versão e os dados necessários no envelope. Se ordenação estrita de saída for requerida, será outra decisão, ausente no desafio.
 
 ## 12. Ambiguidades e interpretações propostas
 
@@ -246,7 +273,7 @@ Os itens a seguir distinguem decisões confirmadas de propostas. A01 e A02 foram
 | A06 | Mesmo externalTransactionId com nova key e referências em WIN/LOSS/BET | Propor conflito de identidade externa com key nova. WIN pode omitir referência; se informar, deve apontar BET da mesma rodada/contexto e pode aguardar quando ausente. BET/LOSS não aceitam referência. Não tornar referência obrigatória em WIN |
 | A07 | Referência existe mas está pendente, rejeitada, em outro contexto ou é a própria operação | Esperar quando não terminal; rejeitar quando terminal sem processamento, inválida ou auto-referência. Sem impor igualdade adicional de gameId. Ausência de referência não significa wallet inexistente: não há requisito de esperar criação de wallet |
 | A08 | TTL/tentativas de referência e semântica durante outage | TTL de 24h com backoff persistente; referência válida encontrada na retomada prevalece sobre expiração; inexistente ou ainda pendente expira com códigos distintos. Valores são defaults justificáveis e ajustáveis |
-| A09 | Destino dos eventos e ordenação da saída não são definidos | Fila local configurável wager-events.fifo, distinta de comandos. Outbox ao menos uma vez com eventId estável; nenhuma garantia extra de ordenação entre eventos concorrentes |
+| A09 | Destino dos eventos e ordenação da saída não são definidos no enunciado | Fila local wager-events.fifo solicitada pelo usuário e criada em E1, distinta de comandos. Outbox ao menos uma vez com eventId estável e sem garantia extra de ordenação continua proposta para E11 |
 | A10 | Limite monetário, status HTTP e momento do saldo de rejeições não definidos | Limite técnico BIGINT; mapeamento da seção 13; rejeição aceita guarda saldo observado sob o lock na decisão, sem movimento. Não consultar saldo vivo em replay |
 | A11 | Identidade de provedor sem cadastro e campos internos de OPENING | providerId externo não vazio, opaco e validado no contexto; não inventar whitelist/cadastro de provedores. OPENING não tem identidade externa e não concorre com keys externas |
 | A12 | FAILED, falhas de transporte e requisitos de retenção não detalhados | FAILED só para operação aceita com falha permanente classificável; payload impossível de modelar fica em DLQ sem entidade artificial. Retenção sem limpeza automática de ledger, idempotência/inbox/outbox no escopo; não é política de retenção ilimitada para produção |
@@ -292,9 +319,11 @@ Logs JSON incluem correlationId, messageId, transactionId, walletId e providerId
 ## 14. Riscos, evidências e próximo passo
 
 - Hot wallet é serializada por escolha; throughput dessa wallet fica limitado pela duração do commit. Encurtar a transação e medir antes de trocar a estratégia. Wallets distintas continuam concorrentes.
-- Triggers e mapeamento exato são o ponto de maior cuidado do schema. Validar comportamento no COMMIT, abertura zero/positiva, bypass do ORM, papel restrito e concorrência; não considerar o desenho prova suficiente.
+- Triggers e mapeamento monetário exato serão o ponto de maior cuidado do schema futuro. Validar comportamento no COMMIT, abertura zero/positiva, bypass do ORM, papel restrito e concorrência; não considerar o desenho prova suficiente.
 - Publisher mantém conexão enquanto chama SQS; limitar concorrência/timeout e observar pool/lag. Se necessário, evoluir para leases sem mudar o contrato financeiro.
-- Replay de pendências e combinação de reversões são decisões de contrato ainda abertas; a tabela de ambiguidades torna o impacto visível.
-- Dependências reais, crashes e ≥3 processos são indispensáveis para demonstrar os mecanismos. Nenhum teste foi executado sobre o sistema, que ainda não existe.
+- Replay da primeira resposta e combinação de reversões estão confirmados; conservar os impactos documentados, incluindo o primeiro 202 no replay e possível crédito de REFUND + ROLLBACK.
+- Dependências reais, crashes e ≥3 processos serão indispensáveis para comprovar o sistema financeiro. E1 verificou somente configuração, integração da base e falhas de dependências; ainda não demonstra correção financeira distribuída.
 
-O próximo passo é revisar D01 e A01–A07 com o usuário e então executar somente E1: base mínima da stack, compatibilidade, containers e extensão de autenticação. A representação Money começa em E2. Não instalar nem implementar nada nesta entrega documental.
+Validação E1 em 08/11/2026: instalação com bun.lock congelado sem mudanças, typecheck e build concluídos; 13 testes de configuração e 9 smoke tests passaram. CLI retornou No pending migrations. Smoke comprovou filas/redrive, reexecução do hook, EMs isolados, ausência de tabelas financeiras, indisponibilidade e timeout de ambas as dependências com liveness preservada. Docker Engine 29.6.1 rootless e Compose 5.2.0; nenhuma verificação E1 ficou bloqueada.
+
+Trabalho encerrado em E1. E2 implementará Money conforme D01 quando o usuário solicitar. As propostas restantes serão revistas nas etapas correspondentes, sem reabrir as decisões já confirmadas.

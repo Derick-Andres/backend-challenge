@@ -1,26 +1,26 @@
 # Plano de implementação incremental
 
-Estado: proposta para discussão. Nesta etapa existem apenas documentos; nenhum componente do sistema foi implementado ou testado. As escolhas de stack feitas pelo usuário estão fixadas. As interpretações adicionais estão em [ARCHITECTURE.md](ARCHITECTURE.md).
+Estado: **E0 e E1 concluídas; E2–E13 pendentes**. A base foi implementada e validada; não há implementação financeira. As escolhas confirmadas e as propostas futuras estão em [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Como trabalhar em cada etapa
 
-Antes de iniciar uma etapa, revisar com o usuário suas decisões ainda abertas e explicar o mecanismo que será construído. Entregar uma fatia pequena, executar as verificações indicadas e apresentar o que foi comprovado e o que continua pendente. Não avançar automaticamente para a próxima etapa nesta primeira entrega.
+Antes de iniciar uma etapa, revisar com o usuário as decisões em aberto que a afetem e explicar o mecanismo que será construído. Entregar uma fatia pequena, executar suas verificações e apresentar o que foi comprovado e o que continua pendente. A autorização atual termina em E1; não avançar para E2.
 
-[CHALLENGE.md](CHALLENGE.md) é a cópia integral do enunciado original, sem alterações. Seus números de seção são as referências normativas deste plano. O README continua intacto nesta etapa; mais adiante poderá receber o guia de execução, mantendo o enunciado em CHALLENGE.md.
+[CHALLENGE.md](CHALLENGE.md) é a cópia integral do enunciado original, sem alterações. Seus números de seção são as referências normativas deste plano. README agora é o guia de execução da base E1; o enunciado continua preservado em CHALLENGE.md.
 
 ## Etapas e critérios de aceite
 
 | Etapa | Entrega pequena | Critérios de aceite | Requisitos | Verificações |
 |---|---|---|---|---|
 | E0 — especificação e decisões | CHALLENGE, PLAN e ARCHITECTURE | Enunciado preservado byte a byte; propostas, ambiguidades, riscos e mecanismos explícitos; nenhuma dependência ou implementação | §§2–14 | Comparação com README e revisão de rastreabilidade documental |
-| E1 — base executável | Bun 1.x fixado, NestJS, TypeScript estrito, MikroORM, Compose com PostgreSQL e LocalStack | Build e execução mínimos; bancos e filas acessíveis; configuração validada; scripts de testes definidos; ponto de extensão de autenticação explícito | §§2, 4, 9–10 | Smoke de runtime/ORM/driver sob Bun; containers reais; health básico. Escolher versões compatíveis antes de instalar |
+| E1 — base executável (concluída) | Bun 1.4.4, NestJS, TypeScript estrito, MikroORM, Compose com imagens por digest e três filas FIFO | Build e execução; EM isolado; estrutura de migrations; filas/redrive reproduzíveis; configuração validada; health com timeout; ProviderIdentityPort registrado; README com comandos | §§2, 4, 9–10 | 13 testes de configuração + 9 smoke tests com containers reais; tipos/build; instalação congelada; CLI sem migrations pendentes; readiness 503/liveness 200 com cada dependência parada e pausada |
 | E2 — Money | Value object imutável e conversor exato de persistência | Strings com duas casas; nenhuma conversão monetária para number; erro para moeda diferente, formato inválido e excesso de capacidade; serialização exata inclusive acima de MAX_SAFE_INTEGER | §5, restrição 1; §§6.0–6.1 | U01, U04; round-trip de conversão com PostgreSQL em I01 |
 | E3 — modelo de domínio | Wallet, WagerTransaction, Ledger, Inbox, Outbox e eventos concretos | Factories e rehydrate distintos; transições terminais protegidas; regras financeiras encapsuladas; LOSS sem saldo/ledger; eventos com envelope versionado | §§6–7, 11 | U02–U04; decisões A02–A07 da arquitetura revisadas |
 | E4 — schema e migrations | Tabelas, constraints, índices, triggers e papéis do banco | Up/down/up em banco descartável; SQL direto comprova unicidade, não-negatividade, imutabilidade e vínculo saldo/ledger; opening e version corretos | §§4–6; §7, regras 2–5 | I01 e I02, inclusive falhas no COMMIT e uso do papel da aplicação |
 | E5 — abertura e consulta de wallet | POST/GET de wallet, abertura financeira e leitura de ledger | Abertura positiva gera OPENING + CREDIT + eventos atomicamente; abertura zero sem ledger; version = 1 em ambos; duplicata é conflito; cursor estável e opaco | §§6.2, 6.4, 9, 11 | U02; I02; páginas sob inserções concorrentes; carteira duplicada em paralelo |
 | E6 — primeira operação financeira | Use case compartilhável, BET e WIN, lock por wallet e outbox gravada | Dois BETs de 80 sobre 100 dão um sucesso e uma rejeição; HTTP só responde após commit; eventos ainda não são publicados; falha intermediária desfaz todas as escritas | §§5, 7–9, 11 | U03; I02; C02, C03 e C04 |
-| E7 — idempotência e consultas de transação | Hash canônico, uniques, snapshots do resultado e replay | 50 chamadas paralelas com a mesma key causam um efeito; payload divergente é 409; replay conserva saldo histórico após novas operações e reinício; identidade externa duplicada não cria operação nova | §§6.3, 9; §7, regra 7 | U05; C01; parte de I06/C08; HTTP e futura entrada SQS usam o mesmo contrato |
-| E8 — resultados e reversões | LOSS, REFUND, ROLLBACK e códigos de rejeição | Reversão integral valida contexto e tipo; uma reversão processada por referência e tipo; rejeição de débito de reversão tem código próprio; LOSS e rejeições sem ledger/version/balance event | §§6.3–6.4, 7 | U03–U04; disputas de reversão em PostgreSQL; revisão do caso REFUND + ROLLBACK |
+| E7 — idempotência e consultas de transação | Hash canônico, uniques, snapshots do resultado e replay | 50 chamadas paralelas causam um efeito; payload divergente é 409; replay mantém primeira resposta e HTTP, alterando só idempotentReplay; GET expõe evolução e resultado terminal histórico; identidade externa duplicada não cria operação nova | §§6.3, 9; §7, regra 7 | U05; C01; parte de I06/C08; testar primeiro 202 preservado depois de conclusão e reinício; HTTP/SQS usam o mesmo contrato |
+| E8 — resultados e reversões | LOSS, REFUND, ROLLBACK e códigos de rejeição | Reversão integral valida contexto e tipo; uma reversão processada por referência + tipo, permitindo REFUND e ROLLBACK sobre a mesma BET uma vez cada; rejeição de débito de reversão tem código próprio; LOSS e rejeições sem ledger/version/balance event | §§6.3–6.4, 7 | U03–U04; disputas de reversão em PostgreSQL; comprovar o efeito de REFUND + ROLLBACK conforme decisão confirmada |
 | E9 — referências fora de ordem | PENDING_REFERENCE e worker agendado persistente | Retry não depende da mensagem original; backoff/TTL sobrevivem a reinício; referência futura desbloqueia operação uma vez; expiração rejeita e grava evento; múltiplos workers revalidam estado sob lock | §§3, 7.1, 11 | C07, I06; relógio controlável; referência ausente, pendente, rejeitada e de outro contexto |
 | E10 — entrada SQS | Consumidor, inbox, backoff, redrive/DLQ e shutdown | Mesmo use case de HTTP; inbox na mesma transação; DeleteMessage após commit; erro de negócio terminal recebe ack; transitórios voltam; permanentes chegam à DLQ; SIGTERM drena ou libera visibilidade | §§6.5, 10, 12 | I02, I03, I05; C01 também por SQS, C04, C05 |
 | E11 — publicação da outbox | Publisher com SKIP LOCKED, timeout e retry | Dois publishers dividem trabalho; publicação só lê eventos confirmados; crash antes/depois de SendMessage não perde evento; eventId permanece igual em republicações; evento confirmado deixa de ser elegível | §§6.5, 11 | I04; C06; indisponibilidade/retorno de SQS; consumidor de teste com dedup persistente |
@@ -28,6 +28,23 @@ Antes de iniciar uma etapa, revisar com o usuário suas decisões ainda abertas 
 | E13 — comprovação e apresentação | Suíte integrada, ensaios de falha e documentação operacional | Todos os testes obrigatórios passam com infraestrutura real e ≥3 processos; saldo = ledger em todos os cenários financeiros; setup reproduzível; decisões e limitações atualizadas | §§8, 13–14 | U01–U05, I01–I06 e C01–C08; execução final documentada |
 
 E1 não inclui implementação financeira. E6 grava outbox antes de existir publisher: isso permite validar a atomicidade isoladamente. E10 e E11 serão entregas separadas para facilitar a compreensão das janelas de falha.
+
+## Evidências da conclusão de E1
+
+Validação em 08/11/2026, Linux amd64, Bun 1.4.4, Docker Engine 29.6.1 rootless e Compose 5.2.0:
+
+| Comando | Resultado |
+|---|---|
+| bun install --frozen-lockfile | Resolução congelada aceita, sem mudanças |
+| bun run typecheck | Sem erros, incluindo testes |
+| bun run build | Compilação ESM concluída |
+| bun run test | 13 testes de configuração passaram |
+| bun run migration:pending | No pending migrations; nenhuma migration financeira |
+| bun run test:smoke | 9 testes passaram com PostgreSQL e LocalStack reais; API compilada |
+
+O smoke confere FIFO/redrive e bootstrap repetido; contextos EM sobrepostos; nenhuma tabela financeira; health saudável; parada/pausa de cada dependência com readiness 503 e liveness 200; recuperação sem reiniciar a API; porta de identidade registrada e não autenticada. Os containers são restaurados e a API de teste é encerrada. Nenhuma verificação E1 ficou bloqueada. Instalação local do Bun nesta sessão ocorreu em /tmp, sem alterar instalação global.
+
+Não foram executados testes financeiros U01–U05, I01–I06 ou C01–C08: continuam critérios futuros. Migrations reversíveis de schema, papéis restritos, mensagens reais encaminhadas para DLQ e recuperação de operações/outbox permanecem fora de E1.
 
 ## Catálogo de testes obrigatórios
 
@@ -83,6 +100,6 @@ As propostas restantes não bloqueiam E1; serão revisadas na etapa corresponden
 
 ## Limites de escopo e conclusão
 
-Autenticação fica adiada, com extensão explícita a implementar em E1. Não incluir IdP, usuários/senhas próprios, double-entry, event sourcing, barramento genérico, OpenTelemetry, dashboard ou teste de carga no caminho obrigatório. Não criar cadastro de provedores, fechamento de rodada ou regras de settlement ausentes no enunciado.
+Autenticação fica adiada; ProviderIdentityPort e adaptador de desenvolvimento já estão registrados em E1. Não incluir IdP, usuários/senhas próprios, double-entry, event sourcing, barramento genérico, OpenTelemetry, dashboard ou teste de carga no caminho obrigatório. Não criar cadastro de provedores, fechamento de rodada ou regras de settlement ausentes no enunciado.
 
 O desafio só estará concluído após E13. Documentar um mecanismo, criar uma constraint ou executar um teste unitário não comprova isoladamente a correção distribuída. No fechamento, registrar versões efetivas, comandos, ambiente, resultados, limites e riscos remanescentes. Carga é opcional; se adicionada depois, seguir o comando e a metodologia da §14.
