@@ -3,7 +3,7 @@ import { EntityManager } from '@mikro-orm/postgresql';
 import { Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG } from '../config/configuration.js';
 import type { AppConfig } from '../config/configuration.js';
-import { QUEUE_NAMES } from '../infrastructure/sqs/sqs.module.js';
+import { queueNames } from '../infrastructure/sqs/sqs.module.js';
 
 type DependencyStatus = 'up' | 'down';
 export interface Readiness {
@@ -25,7 +25,7 @@ export class HealthService {
       this.check(async () => {
         // Um deadline compartilhado limita toda a verificação das três filas.
         const abortSignal = AbortSignal.timeout(this.config.HEALTH_TIMEOUT_MS);
-        await Promise.all(QUEUE_NAMES.map(async (QueueName) => {
+        await Promise.all(queueNames(this.config.SQS_QUEUE_PREFIX).map(async (QueueName) => {
           const { QueueUrl } = await this.sqs.send(new GetQueueUrlCommand({ QueueName }), { abortSignal });
           if (!QueueUrl) throw new Error('Fila indisponível');
           await this.sqs.send(new GetQueueAttributesCommand({

@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Inject, Res } from '@nestjs/common';
 import { HealthService } from './health.service.js';
 import type { Readiness } from './health.service.js';
 
@@ -12,9 +12,10 @@ export class HealthController {
   }
 
   @Get('ready')
-  async ready(): Promise<Readiness> {
+  async ready(@Res({ passthrough: true }) response: { status(code: number): void }): Promise<Readiness> {
     const result = await this.health.readiness();
-    if (result.status === 'error') throw new ServiceUnavailableException(result);
+    // Readiness é um contrato operacional, não um erro de negócio sanitizado.
+    if (result.status === 'error') response.status(503);
     return result;
   }
 }

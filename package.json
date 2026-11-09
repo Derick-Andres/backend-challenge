@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "packageManager": "bun@1.4.4",
-  "engines": { "bun": "1.4.4" },
+  "engines": {
+    "bun": "1.4.4"
+  },
   "scripts": {
     "build": "rm -rf dist && bun --bun tsc -p tsconfig.build.json",
     "typecheck": "bun --bun tsc --noEmit",
     "start": "bun dist/src/main.js",
     "start:dev": "bun --watch src/main.ts",
     "test": "bun test test/unit",
+    "test:money:postgres": "bun test --timeout 30000 test/integration/money-postgres.test.ts",
     "test:smoke": "bun run build && bun test --timeout 120000 test/smoke.test.ts",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
@@ -18,7 +21,21 @@
     "orm": "bun --bun ./node_modules/@mikro-orm/cli/cli.js",
     "migration:pending": "bun run build && bun run orm migration:pending --config ./dist/mikro-orm.config.js",
     "migration:up": "bun run build && bun run orm migration:up --config ./dist/mikro-orm.config.js",
-    "migration:down": "bun run build && bun run orm migration:down --config ./dist/mikro-orm.config.js"
+    "migration:down": "bun run build && bun run orm migration:down --config ./dist/mikro-orm.config.js",
+    "db:setup": "bun run build && bun scripts/database/setup.ts",
+    "test:schema": "bun run build && bun test --timeout 30000 test/integration/schema.test.ts",
+    "test:wallets": "bun run build && bun test --timeout 30000 test/integration/wallet-api.test.ts",
+    "test:concurrency": "bun run build && bun test --timeout 30000 test/integration/wagering-concurrency.test.ts",
+    "test:idempotency": "bun run build && bun test --timeout 30000 test/integration/idempotency-api.test.ts",
+    "test:reversals": "bun run build && bun test --timeout 30000 test/integration/reversals-api.test.ts",
+    "workers": "bun dist/src/workers.js",
+    "test:references": "bun run build && bun test --timeout 30000 test/integration/references.test.ts",
+    "test:commands": "bun run build && bun test --timeout 30000 test/integration/commands.test.ts",
+    "test:publisher": "bun run build && bun test --timeout 30000 test/integration/publisher.test.ts",
+    "test:observability": "bun run build && bun test --timeout 30000 test/integration/observability.test.ts",
+    "verify": "bun scripts/verify.ts",
+    "test:integration": "bun run build && bun test --timeout 60000 test/integration",
+    "test:recovery": "bun run build && bun test --timeout 60000 test/integration/system-recovery.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-sqs": "3.1164.0",

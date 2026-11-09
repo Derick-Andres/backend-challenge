@@ -72,7 +72,7 @@ async function queueAttributes(name: string) {
   return Attributes ?? {};
 }
 
-describe('E1 com PostgreSQL e LocalStack reais', () => {
+describe('Base operacional com PostgreSQL e LocalStack reais após migrations', () => {
   beforeAll(async () => {
     await compose('up', '-d', '--wait', '--wait-timeout', '120');
     const reservation = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => new Response() });
@@ -141,11 +141,13 @@ describe('E1 com PostgreSQL e LocalStack reais', () => {
     expect(() => orm.em.getContext()).toThrow();
   });
 
-  test('E1 não cria tabelas financeiras', async () => {
+  test('schema financeiro migrado contém as cinco tabelas centrais', async () => {
     const tables = await orm.em.fork().execute<{ table_name: string }[]>(
       "select table_name from information_schema.tables where table_schema = 'public'",
     );
-    expect(tables.filter(({ table_name }) => table_name !== 'mikro_orm_migrations')).toEqual([]);
+    expect(tables.map(({ table_name }) => table_name).filter((name) => name!=='mikro_orm_migrations').sort()).toEqual([
+      'inbox_messages','outbox_messages','wager_transactions','wallet_ledger_entries','wallets',
+    ]);
   });
 
   for (const dependency of ['postgres', 'localstack'] as const) {

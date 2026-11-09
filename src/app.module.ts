@@ -9,10 +9,15 @@ import { HealthService } from './health/health.service.js';
 import { ormOptions } from './infrastructure/database/orm-options.js';
 import { IdentityModule } from './infrastructure/identity/identity.module.js';
 import { SqsModule } from './infrastructure/sqs/sqs.module.js';
+import { FinancialModule } from './financial.module.js';
+import { TelemetryModule } from './infrastructure/observability/telemetry.module.js';
+import { MetricsService } from './infrastructure/observability/metrics.service.js';
+import { MetricsController } from './http/metrics.controller.js';
 
 @Module({
   imports: [
     ConfigurationModule,
+    TelemetryModule,
     MikroOrmModule.forRootAsync({
       driver: PostgreSqlDriver,
       inject: [APP_CONFIG],
@@ -20,8 +25,9 @@ import { SqsModule } from './infrastructure/sqs/sqs.module.js';
     }),
     SqsModule,
     IdentityModule,
+    FinancialModule,
   ],
-  controllers: [HealthController],
-  providers: [HealthService],
+  controllers: [HealthController,MetricsController],
+  providers: [HealthService,MetricsService],
 })
 export class AppModule {}

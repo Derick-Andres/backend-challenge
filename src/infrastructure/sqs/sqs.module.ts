@@ -4,11 +4,8 @@ import type { OnModuleDestroy } from '@nestjs/common';
 import { APP_CONFIG } from '../../config/configuration.js';
 import type { AppConfig } from '../../config/configuration.js';
 
-export const QUEUE_NAMES = [
-  'wager-transactions.fifo',
-  'wager-transactions-dlq.fifo',
-  'wager-events.fifo',
-] as const;
+export const queueNames = (prefix = 'wager') => [`${prefix}-transactions.fifo`,`${prefix}-transactions-dlq.fifo`,`${prefix}-events.fifo`] as const;
+export const QUEUE_NAMES = queueNames();
 
 @Module({
   providers: [{
